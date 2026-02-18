@@ -3,20 +3,21 @@ const {
     ActionRowBuilder, 
     ButtonBuilder, 
     ButtonStyle, 
-    PermissionsBitField,
-    ChannelType 
+    ChannelType, 
+    PermissionsBitField 
 } = require("discord.js");
 const db = require("pro.db");
 const path = require("path");
 
-// تعديل المسار ليتوافق مع مجلد commands/tickets/close.js
-const closeCommand = require("../commands/tickets/close.js"); 
+// المسار الصحيح للوصول للملف من داخل مجلد events
+// نخرج خطوة (..) ثم ندخل commands ثم tickets
+const closeCommand = require("../commands/tickets/close.js");
 
 module.exports = async (client, interaction) => {
     try {
-        // 1. معالجة القوائم (فتح التذكرة)
+        // 1. فتح التذكرة
         if (interaction.isStringSelectMenu() && interaction.customId === "M0") {
-            // منع الخطأ الأحمر فوراً
+            // حل مشكلة الرسالة الحمراء (التأخير)
             await interaction.deferReply({ ephemeral: true });
 
             const guildId = interaction.guild.id;
@@ -24,12 +25,12 @@ module.exports = async (client, interaction) => {
             const roleId = db.get(`Role = [${guildId}]`);
 
             if (!categoryId || !roleId) {
-                return interaction.editReply({ content: "⚠️ الإعدادات ناقصة (تأكد من تحديد الكاتيجوري ورتبة الدعم)." });
+                return interaction.editReply({ content: "⚠️ الإعدادات ناقصة (الكاتيجوري أو الرتبة)." });
             }
 
-            // فحص إذا كان المستخدم لديه تذكرة مفتوحة (تجنب التعليق)
-            const oldChannelId = db.get(`member${interaction.user.id}`);
-            if (oldChannelId && interaction.guild.channels.cache.has(oldChannelId)) {
+            // منع التذاكر المكررة
+            const check = db.get(`member${interaction.user.id}`);
+            if (check && interaction.guild.channels.cache.has(check)) {
                 return interaction.editReply({ content: "❌ لديك تذكرة مفتوحة بالفعل!" });
             }
 
@@ -47,7 +48,7 @@ module.exports = async (client, interaction) => {
             db.set(`channel${channel.id}`, interaction.user.id);
             db.set(`member${interaction.user.id}`, channel.id);
 
-            // --- الشكل المطلوب (الأزرار الأربعة في صف واحد) ---
+            // تصميم الرسالة (مثل الصورة اللي ارسلتها)
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId("close_ticket_btn").setEmoji("🗑️").setStyle(ButtonStyle.Danger),
                 new ButtonBuilder().setCustomId("notify_staff").setEmoji("🔔").setStyle(ButtonStyle.Secondary),
@@ -55,10 +56,10 @@ module.exports = async (client, interaction) => {
                 new ButtonBuilder().setCustomId("change_color").setEmoji("🎨").setStyle(ButtonStyle.Secondary)
             );
 
-            const welcomeText = db.get(`tcsend_${guildId}`) || "مرحباً عزيزي العميل ،\nيرجى كتابة طلباتك الي حين تواصل الدعم الفني معك";
+            const welcome = db.get(`tcsend_${guildId}`) || "مرحباً بك، يرجى كتابة طلبك.";
             const embed = new EmbedBuilder()
                 .setColor("#d3a35a")
-                .setDescription(`${welcomeText} <@${interaction.user.id}>`);
+                .setDescription(`${welcome} <@${interaction.user.id}>`);
 
             await channel.send({ 
                 content: `نوع التذكرة : ${interaction.values[0]}`,
@@ -66,30 +67,25 @@ module.exports = async (client, interaction) => {
                 components: [row] 
             });
 
-            await interaction.editReply({ content: `✅ تم فتح تذكرتك بنجاح: ${channel}` });
+            await interaction.editReply({ content: `✅ تم فتح التذكرة: ${channel}` });
         }
 
-        // 2. معالجة الأزرار (إغلاق التذكرة)
+        // 2. معالجة الأزرار (زر الحذف)
         if (interaction.isButton() && interaction.customId === 'close_ticket_btn') {
-            // تنفيذ كود الإغلاق من الملف المعدل
+            // محاكاة رسالة لتشغيل كود close.js
             const fakeMessage = {
                 guild: interaction.guild,
                 channel: interaction.channel,
                 author: interaction.user,
                 member: interaction.member,
-                reply: (content) => interaction.reply(content),
-                react: (emoji) => interaction.channel.send(emoji)
+                reply: (c) => interaction.reply(c),
+                react: (e) => interaction.channel.send(e)
             };
             
-            try {
-                await closeCommand.run(client, fakeMessage);
-            } catch (err) {
-                console.error("فشل استدعاء ملف الإغلاق:", err);
-                await interaction.reply({ content: "❌ حدث خطأ أثناء محاولة إغلاق التذكرة.", ephemeral: true });
-            }
+            await closeCommand.run(client, fakeMessage);
         }
 
     } catch (error) {
-        console.error("خطأ التفاعل:", error);
+        console.error("Interaction Error:", error);
     }
 };
