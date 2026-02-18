@@ -17,7 +17,7 @@ console.log("✅ السيرفر الوهمي جاهز لمراقبة UptimeRobot
 
 // 2. الربط مع MongoDB
 // نصيحة: بعد التأكد من عمله، يفضل وضع هذا الرابط في ملف config.json أو متغيرات البيئة
-const mongoURI = "mongodb+srv://mroan19899_db_user:pIvyxUu6SLzFMlrZ@cluster0.d39lidi.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const mongoURI = "mongodb+srv://mroan19899_db_user:gMt56zIvireFe0tg@cluster0.d39lidi.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 mongoose.connect(mongoURI)
   .then(() => console.log('✅ تم الاتصال بقاعدة بيانات MongoDB بنجاح!'))
