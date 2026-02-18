@@ -6,49 +6,62 @@ const {
     ChannelType, 
     PermissionsBitField 
 } = require("discord.js");
-const db = require("pro.db");
+const mongoose = require("mongoose");
 const path = require("path");
 
-// المسار الصحيح للوصول للملف من داخل مجلد events
-// نخرج خطوة (..) ثم ندخل commands ثم tickets
+// استدعاء ملف الإغلاق (تأكد من المسار الصحيح)
 const closeCommand = require("../commands/tickets/close.js");
+
+// تعريف شكل البيانات في MongoDB (Schema)
+const TicketSchema = mongoose.models.Ticket || mongoose.model("Ticket", new mongoose.Schema({
+    guildId: String,
+    categoryId: String,
+    roleId: String,
+    logChannelId: String,
+    welcomeMessage: String,
+    openTickets: { type: Map, of: String, default: {} } // لتخزين من فتح تذكرة
+}));
 
 module.exports = async (client, interaction) => {
     try {
-        // 1. فتح التذكرة
+        const guildId = interaction.guild.id;
+
+        // 1. معالجة القوائم (فتح التذكرة)
         if (interaction.isStringSelectMenu() && interaction.customId === "M0") {
-            // حل مشكلة الرسالة الحمراء (التأخير)
             await interaction.deferReply({ ephemeral: true });
 
-            const guildId = interaction.guild.id;
-            const categoryId = db.get(`Cat = [${guildId}]`);
-            const roleId = db.get(`Role = [${guildId}]`);
-
-            if (!categoryId || !roleId) {
-                return interaction.editReply({ content: "⚠️ الإعدادات ناقصة (الكاتيجوري أو الرتبة)." });
+            // جلب الإعدادات من MongoDB
+            let config = await TicketSchema.findOne({ guildId });
+            
+            if (!config || !config.categoryId || !config.roleId) {
+                return interaction.editReply({ content: "⚠️ لم يتم ضبط الإعدادات في قاعدة البيانات السحابية (استخدم أوامر الإعداد أولاً)." });
             }
 
-            // منع التذاكر المكررة
-            const check = db.get(`member${interaction.user.id}`);
-            if (check && interaction.guild.channels.cache.has(check)) {
-                return interaction.editReply({ content: "❌ لديك تذكرة مفتوحة بالفعل!" });
+            // منع تكرار التذاكر
+            if (config.openTickets.get(interaction.user.id)) {
+                const oldChannelId = config.openTickets.get(interaction.user.id);
+                if (interaction.guild.channels.cache.has(oldChannelId)) {
+                    return interaction.editReply({ content: "❌ لديك تذكرة مفتوحة بالفعل!" });
+                }
             }
 
+            // إنشاء الروم
             const channel = await interaction.guild.channels.create({
                 name: `ticket-${interaction.user.username}`,
                 type: ChannelType.GuildText,
-                parent: categoryId,
+                parent: config.categoryId,
                 permissionOverwrites: [
                     { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
                     { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.EmbedLinks] },
-                    { id: roleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+                    { id: config.roleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
                 ],
             });
 
-            db.set(`channel${channel.id}`, interaction.user.id);
-            db.set(`member${interaction.user.id}`, channel.id);
+            // حفظ حالة التذكرة في MongoDB
+            config.openTickets.set(interaction.user.id, channel.id);
+            await config.save();
 
-            // تصميم الرسالة (مثل الصورة اللي ارسلتها)
+            // إرسال رسالة الترحيب (نفس شكل الصورة)
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId("close_ticket_btn").setEmoji("🗑️").setStyle(ButtonStyle.Danger),
                 new ButtonBuilder().setCustomId("notify_staff").setEmoji("🔔").setStyle(ButtonStyle.Secondary),
@@ -56,10 +69,9 @@ module.exports = async (client, interaction) => {
                 new ButtonBuilder().setCustomId("change_color").setEmoji("🎨").setStyle(ButtonStyle.Secondary)
             );
 
-            const welcome = db.get(`tcsend_${guildId}`) || "مرحباً بك، يرجى كتابة طلبك.";
             const embed = new EmbedBuilder()
                 .setColor("#d3a35a")
-                .setDescription(`${welcome} <@${interaction.user.id}>`);
+                .setDescription(`${config.welcomeMessage || "مرحباً بك، يرجى كتابة طلبك."} <@${interaction.user.id}>`);
 
             await channel.send({ 
                 content: `نوع التذكرة : ${interaction.values[0]}`,
@@ -67,12 +79,12 @@ module.exports = async (client, interaction) => {
                 components: [row] 
             });
 
-            await interaction.editReply({ content: `✅ تم فتح التذكرة: ${channel}` });
+            await interaction.editReply({ content: `✅ تم فتح تذكرتك بنجاح: ${channel}` });
         }
 
-        // 2. معالجة الأزرار (زر الحذف)
+        // 2. معالجة الأزرار (إغلاق التذكرة)
         if (interaction.isButton() && interaction.customId === 'close_ticket_btn') {
-            // محاكاة رسالة لتشغيل كود close.js
+            // استدعاء ملف close.js المنظم
             const fakeMessage = {
                 guild: interaction.guild,
                 channel: interaction.channel,
@@ -82,6 +94,18 @@ module.exports = async (client, interaction) => {
                 react: (e) => interaction.channel.send(e)
             };
             
+            // تحديث MongoDB قبل الحذف للسماح بفتح تذكرة جديدة
+            let config = await TicketSchema.findOne({ guildId });
+            if (config) {
+                for (let [userId, chId] of config.openTickets) {
+                    if (chId === interaction.channel.id) {
+                        config.openTickets.delete(userId);
+                        break;
+                    }
+                }
+                await config.save();
+            }
+
             await closeCommand.run(client, fakeMessage);
         }
 
