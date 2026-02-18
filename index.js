@@ -1,3 +1,13 @@
+const http = require('http');
+
+http.createServer((req, res) => {
+  res.writeHead(200, {'Content-Type': 'text/plain; charset=utf-8'}); // عشان يدعم العربي
+  res.write('البوت شغال ومتصل بالسيرفر ✅'); 
+  res.end();
+}).listen(process.env.PORT || 8080);
+
+console.log("السيرفر الوهمي جاهز، والبوت لن يتوقف!");
+
 const fs = require("fs");
 const path = require("path");
 const { Client, Collection, GatewayIntentBits, Partials } = require("discord.js");
