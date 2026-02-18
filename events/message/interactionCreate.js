@@ -1,16 +1,11 @@
-const { MessageActionRow, Modal, TextInputComponent, PermissionsBitField, EmbedBuilder } = require("discord.js");
-const db = require("pro.db");
-
 module.exports = async (client, interaction) => {
-    // 1. حل مشكلة الرسالة الحمراء: الرد التلقائي لتأكيد استلام الأمر
+    // هذا السطر هو "المسكن" اللي يمنع الرسالة الحمراء
     if (interaction.isButton() || interaction.isStringSelectMenu()) {
-        try {
-            // نستخدم deferUpdate للأزرار والقوائم لمنع ظهور "Interaction Failed"
-            if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate().catch(() => {});
-        } catch (e) {
-            console.error("Error deferring interaction:", e);
-        }
+        await interaction.deferUpdate().catch(() => {});
     }
+
+    if (interaction.isButton()) {
+        // ... باقي كودك حق الـ Auto_Reply    }
 
     // 2. معالجة القوائم (Select Menus) - كود فتح التذكرة
     if (interaction.isStringSelectMenu()) {
