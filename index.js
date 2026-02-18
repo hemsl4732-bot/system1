@@ -94,3 +94,4 @@ client.once("ready", () => {
 
 
 client.login(config.token);
+
