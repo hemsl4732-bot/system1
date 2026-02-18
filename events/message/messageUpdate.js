@@ -12,7 +12,8 @@ module.exports = async (client, oldMessage, newMessage) => {
 
   if (oldMessage.channel.type === "DM") return;
 
-  if (!oldMessage.guild.me.permissions.has("EMBED_LINKS")) return;
+  if (!oldMessage.guild || !oldMessage.guild.members || !oldMessage.guild.members.me) return;
+if (!oldMessage.guild.members.me.permissions.has("EMBED_LINKS")) return;
   if (!oldMessage.guild.me.permissions.has("MANAGE_MESSAGES")) return;
 
   let channelmessage = db.get(`channelmessage_${oldMessage.guild.id}`);
