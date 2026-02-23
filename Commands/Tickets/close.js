@@ -6,79 +6,52 @@ module.exports = {
   name: "close",
   aliases: ["إغلاق", "اغلاق"],
   run: async (client, message) => {
-    // التحقق إذا كان الأمر معطلاً من الإعدادات
     const isEnabled = Data.get(`command_enabled_${module.exports.name}`);
     if (isEnabled === false) return;
 
     try {
-      const guildId = message.guild.id;
-      const channelId = message.channel.id;
+      const roleId = Data.get(`Role = [${message.guild.id}]`);
+      if (!roleId || !message.member.roles.cache.has(roleId)) return;
 
-      // 1. جلب رتبة الدعم وصاحب التذكرة
-      const roleId = Data.get(`Role = [${guildId}]`);
-      const memberId = Data.get(`channel${channelId}`);
-
-      // التحقق: هل الشخص الذي أغلق التذكرة هو الدعم أو صاحب التذكرة نفسه؟
-      if (!message.member.roles.cache.has(roleId) && message.author.id !== memberId) {
-          return; // إذا لم يكن أحدهما، لا يفعل شيء
-      }
-
-      // التأكد أن هذه القناة هي قناة تذكرة فعلاً مسجلة في القاعدة
-      if (!memberId) return message.react("❌");
-
-      const Color = Data.get(`Guild_Color = ${guildId}`) ||
+      const Color = Data.get(`Guild_Color = ${message.guild?.id}`) ||
                     message.guild.members.me?.displayHexColor || Colors.Blurple;
 
-      // --- الحل الجذري لمشكلتك ---
-      // نقوم بمسح بيانات التذكرة فوراً لكي يستطيع المستخدم فتح تذكرة جديدة
-      Data.delete(`channel${channelId}`);
-      Data.delete(`member${memberId}`);
-      // ----------------------------
+      if (!Data.has(`channel${message.channel.id}`)) return message.react("❌");
+
+      const memberId = Data.get(`channel${message.channel.id}`);
+      const member = await message.guild.members.fetch(memberId);
+
+      Data.delete(`channel${message.channel.id}`);
+      Data.delete(`member${member.id}`);
 
       const ticketName = message.channel.name;
 
-      // إرسال رسالة التنبيه قبل الحذف
-      await message.reply("**🎫 جاري حفظ النسخة وحذف التذكرة خلال 5 ثوانٍ...**").catch(() => {});
-
       setTimeout(async () => {
-        try {
-          // إنشاء الترانزكريبت (سجل المحادثة)
-          const transcript = await createTranscript(message.channel, {
-            returnType: "buffer",
-            minify: true,
-            saveImages: true,
-            useCDN: true,
-            poweredBy: false,
-            fileName: `${ticketName}.html`,
-          });
+        const transcript = await createTranscript(message.channel, {
+          returnType: "buffer",
+          minify: true,
+          saveImages: true,
+          useCDN: true,
+          poweredBy: false,
+          fileName: `${message.channel.name}.html`,
+        });
 
-          // إرسال اللوج
-          const logChannelId = Data.get(`Channel = [${guildId}]`);
-          const logChannel = message.guild.channels.cache.get(logChannelId);
+        const logChannelId = Data.get(`Channel = [${message.guild.id}]`);
+        const logChannel = message.guild.channels.cache.get(logChannelId);
+        if (!logChannel) return console.error("لا يمكن العثور على روم اللوج!");
 
-          if (logChannel) {
-            const embed = new EmbedBuilder()
-              .setAuthor({ name: `تم إغلاق تذكرة`, iconURL: message.guild.iconURL() })
-              .setColor(Color)
-              .addFields(
-                  { name: "صاحب التذكرة", value: `<@${memberId}>`, inline: true },
-                  { name: "أغلقها بواسطة", value: `<@${message.author.id}>`, inline: true },
-                  { name: "اسم القناة", value: `${ticketName}`, inline: true }
-              )
-              .setFooter({ text: message.guild.name, iconURL: message.guild.iconURL() })
-              .setTimestamp();
+        const embed = new EmbedBuilder()
+          .setAuthor({ name: member.user.tag, iconURL: member.user.displayAvatarURL({ size: 1024 }) })
+          .setColor(Color)
+          .setDescription(`**إغلاق تذكرة\n\nتذكرة  <@${member.user.id}>\nأغلقها : <@${message.author.id}>\nاسم التذكرة  ${ticketName}**`)
+          .setFooter({ text: message.guild.name, iconURL: message.guild.iconURL() })
+          .setTimestamp();
 
-            await logChannel.send({ embeds: [embed], files: [{ attachment: transcript, name: `${ticketName}.html` }] });
-          }
-
-          // حذف القناة نهائياً
-          await message.channel.delete().catch(() => {});
-          
-        } catch (err) {
-          console.error("Error in delete timeout:", err);
-        }
+        await logChannel.send({ embeds: [embed], files: [{ attachment: transcript, name: `${message.channel.name}.html` }] });
+        await message.channel.delete();
       }, 5000);
 
+      await message.reply("**🎫 سيتم حذف التذكرة خلال ثواني**").catch(() => {});
     } catch (e) {
       console.error("close error:", e);
     }
