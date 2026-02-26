@@ -28,6 +28,8 @@ run().catch(console.dir);
 
 
 
+
+
 const fs = require("fs");
 const path = require("path");
 const { Client, Collection, GatewayIntentBits, Partials } = require("discord.js");
